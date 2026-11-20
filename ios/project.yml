@@ -4,7 +4,6 @@ options:
   deploymentTarget:
     iOS: "15.0"
   createIntermediateGroups: true
-  xcodeVersion: "15.0"
 
 targets:
   PetKingdom:
@@ -12,8 +11,27 @@ targets:
     platform: iOS
     sources:
       - path: PetKingdom
+        excludes:
+          - "Info.plist"
     info:
       path: PetKingdom/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: zh_CN
+        CFBundleDisplayName: 虹光宠物
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconName: AppIcon
+        LSRequiresIPhoneOS: true
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.petkingdom
@@ -26,7 +44,6 @@ targets:
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""
-        ENABLE_BITCODE: NO
 
 schemes:
   PetKingdom:
