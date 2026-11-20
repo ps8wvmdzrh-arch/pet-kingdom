@@ -1,0 +1,1621 @@
+﻿/* 彩虹宠物物语 · Rainbow Pet Saga
+   原创同人向宠物养成 RPG（Web / iOS WKWebView 通用）
+   五系 + 幽蚀系 / 7 张地图 / 54 种宠物 / 捕捉 · 进化 · 宠物蛋 · 干部战
+*/
+(function () {
+  'use strict';
+
+  var VW = 360, VH = 640, TS = 24;
+  var cvs = document.getElementById('game');
+  var ctx = cvs.getContext('2d');
+  var scale = 1, ox = 0, oy = 0, dpr = 1;
+
+  function resize() {
+    var cw = window.innerWidth, ch = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cvs.width = Math.floor(cw * dpr);
+    cvs.height = Math.floor(ch * dpr);
+    cvs.style.width = cw + 'px';
+    cvs.style.height = ch + 'px';
+    scale = Math.min(cw / VW, ch / VH);
+    ox = (cw - VW * scale) / 2;
+    oy = (ch - VH * scale) / 2;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
+
+  /* ============================ 宠物数据 ============================ */
+
+  var BEATS = { plant: 'water', water: 'metal', metal: 'beast', beast: 'wind', wind: 'plant' };
+  var TYPE_NAME = { plant: '植物', water: '海洋', metal: '金属', beast: '猛兽', wind: '飞羽', dark: '幽蚀', rainbow: '虹光' };
+
+  var MOVES = {
+    plant: [{ n: '藤鞭', p: 40 }, { n: '种子弹', p: 52 }, { n: '萌芽风暴', p: 74 }],
+    water: [{ n: '水泡', p: 40 }, { n: '浪击', p: 54 }, { n: '深渊潮', p: 76 }],
+    metal: [{ n: '铁爪', p: 40 }, { n: '齿轮锯', p: 54 }, { n: '钢之陨', p: 76 }],
+    beast: [{ n: '撕咬', p: 40 }, { n: '猛扑', p: 55 }, { n: '王兽咆哮', p: 78 }],
+    wind: [{ n: '风刃', p: 40 }, { n: '羽暴', p: 53 }, { n: '天翔斩', p: 75 }],
+    dark: [{ n: '暗影爪', p: 42 }, { n: '幽噬', p: 58 }, { n: '蚀魂领域', p: 82 }],
+    rainbow: [{ n: '虹光弹', p: 44 }, { n: '七彩棱镜', p: 58 }, { n: '极光审判', p: 84 }]
+  };
+
+  var SPECIES = {
+    /* --- 植物 --- */
+    sprout:      { name: '芽芽',       type: 'plant', shape: 'bud',   evo: 'vinetail',   evoAt: 12, base: { hp: 38, atk: 13, def: 12, spd: 13 } },
+    vinetail:    { name: '藤尾兽',     type: 'plant', shape: 'bud',   evo: 'stagking',   evoAt: 24, base: { hp: 54, atk: 22, def: 19, spd: 19 } },
+    stagking:    { name: '森王鹿',     type: 'plant', shape: 'bud',   base: { hp: 72, atk: 32, def: 28, spd: 27 } },
+    dewbud:      { name: '露蕊',       type: 'plant', shape: 'bloom', evo: 'bloomspirit', evoAt: 12, base: { hp: 36, atk: 14, def: 11, spd: 14 } },
+    bloomspirit: { name: '花冠灵',     type: 'plant', shape: 'bloom', evo: 'sakuradance', evoAt: 24, base: { hp: 52, atk: 24, def: 17, spd: 20 } },
+    sakuradance: { name: '樱舞仙',     type: 'plant', shape: 'bloom', base: { hp: 68, atk: 34, def: 24, spd: 28 } },
+    mossball:    { name: '苔球',       type: 'plant', shape: 'moss',  evo: 'mosscoloss', evoAt: 13, base: { hp: 44, atk: 12, def: 16, spd: 9 } },
+    mosscoloss:  { name: '岩苔巨',     type: 'plant', shape: 'moss',  evo: 'groveward', evoAt: 26, base: { hp: 62, atk: 21, def: 25, spd: 12 } },
+    groveward:   { name: '古木守卫',   type: 'plant', shape: 'moss',  base: { hp: 84, atk: 29, def: 36, spd: 14 } },
+
+    /* --- 海洋 --- */
+    droplet:     { name: '水滴兽',     type: 'water', shape: 'fish',  evo: 'wfin',       evoAt: 12, base: { hp: 40, atk: 13, def: 13, spd: 12 } },
+    wfin:        { name: '浪鳍鲨',     type: 'water', shape: 'fish',  evo: 'tidewhale',  evoAt: 24, base: { hp: 56, atk: 23, def: 19, spd: 18 } },
+    tidewhale:   { name: '潮汐鲸',     type: 'water', shape: 'fish',  base: { hp: 78, atk: 31, def: 30, spd: 22 } },
+    spiralshell: { name: '泡螺',       type: 'water', shape: 'shell', evo: 'coralguard', evoAt: 12, base: { hp: 45, atk: 12, def: 17, spd: 9 } },
+    coralguard:  { name: '珊瑚甲',     type: 'water', shape: 'shell', evo: 'conchking',  evoAt: 24, base: { hp: 60, atk: 20, def: 27, spd: 13 } },
+    conchking:   { name: '深海螺王',   type: 'water', shape: 'shell', base: { hp: 80, atk: 28, def: 38, spd: 15 } },
+    streamcarp:  { name: '溪鲤',       type: 'water', shape: 'carp',  evo: 'riverdrake', evoAt: 13, base: { hp: 37, atk: 15, def: 11, spd: 16 } },
+    riverdrake:  { name: '江鳞龙',     type: 'water', shape: 'carp',  evo: 'seadrake',   evoAt: 26, base: { hp: 54, atk: 26, def: 18, spd: 22 } },
+    seadrake:    { name: '沧海龙',     type: 'water', shape: 'carp',  base: { hp: 70, atk: 36, def: 26, spd: 30 } },
+
+    /* --- 金属 --- */
+    gearling:    { name: '铁豆',       type: 'metal', shape: 'gear',  evo: 'geardog',    evoAt: 12, base: { hp: 42, atk: 14, def: 15, spd: 10 } },
+    geardog:     { name: '齿轮犬',     type: 'metal', shape: 'gear',  evo: 'steelrhino', evoAt: 24, base: { hp: 58, atk: 24, def: 23, spd: 15 } },
+    steelrhino:  { name: '钢甲犀',     type: 'metal', shape: 'gear',  base: { hp: 80, atk: 32, def: 34, spd: 16 } },
+    bronzebell:  { name: '铜铃',       type: 'metal', shape: 'bell',  evo: 'bellguard',  evoAt: 12, base: { hp: 48, atk: 12, def: 19, spd: 8 } },
+    bellguard:   { name: '钟甲卫',     type: 'metal', shape: 'bell',  evo: 'bellcolossus', evoAt: 24, base: { hp: 66, atk: 19, def: 30, spd: 11 } },
+    bellcolossus:{ name: '鸣钟巨像',   type: 'metal', shape: 'bell',  base: { hp: 86, atk: 27, def: 40, spd: 13 } },
+    boltling:    { name: '螺栓',       type: 'metal', shape: 'drone', evo: 'rivethawk',  evoAt: 12, base: { hp: 38, atk: 15, def: 14, spd: 17 } },
+    rivethawk:   { name: '铆钉隼',     type: 'metal', shape: 'drone', evo: 'mechkite',   evoAt: 24, base: { hp: 52, atk: 26, def: 20, spd: 25 } },
+    mechkite:    { name: '机械鸢',     type: 'metal', shape: 'drone', base: { hp: 66, atk: 35, def: 26, spd: 32 } },
+
+    /* --- 猛兽 --- */
+    fuzzpaw:     { name: '绒爪',       type: 'beast', shape: 'paw',   evo: 'fangcat',    evoAt: 12, base: { hp: 37, atk: 15, def: 11, spd: 15 } },
+    fangcat:     { name: '裂齿豹',     type: 'beast', shape: 'paw',   evo: 'lionking',   evoAt: 24, base: { hp: 52, atk: 26, def: 17, spd: 22 } },
+    lionking:    { name: '荒原狮王',   type: 'beast', shape: 'lion',  base: { hp: 70, atk: 36, def: 25, spd: 25 } },
+    ashare:      { name: '灰兔',       type: 'beast', shape: 'rabbit', evo: 'rockhare', evoAt: 12, base: { hp: 36, atk: 13, def: 13, spd: 20 } },
+    rockhare:    { name: '岩背兔',     type: 'beast', shape: 'rabbit', evo: 'cragbeast', evoAt: 24, base: { hp: 54, atk: 21, def: 22, spd: 26 } },
+    cragbeast:   { name: '山岩巨兽',   type: 'beast', shape: 'rabbit', base: { hp: 78, atk: 31, def: 32, spd: 18 } },
+    embertail:   { name: '火尾',       type: 'beast', shape: 'wolf',  evo: 'emberwolf',  evoAt: 13, base: { hp: 39, atk: 16, def: 12, spd: 17 } },
+    emberwolf:   { name: '炎鬃狼',     type: 'beast', shape: 'wolf',  evo: 'lavaking',   evoAt: 26, base: { hp: 56, atk: 28, def: 19, spd: 24 } },
+    lavaking:    { name: '熔岩狼王',   type: 'beast', shape: 'wolf',  base: { hp: 74, atk: 38, def: 27, spd: 28 } },
+
+    /* --- 飞羽 --- */
+    chirp:       { name: '羽啾',       type: 'wind', shape: 'chick',  evo: 'gusthawk',   evoAt: 12, base: { hp: 35, atk: 14, def: 10, spd: 17 } },
+    gusthawk:    { name: '风隼',       type: 'wind', shape: 'chick',  evo: 'skyhawk',    evoAt: 24, base: { hp: 50, atk: 24, def: 16, spd: 24 } },
+    skyhawk:     { name: '天穹鹰',     type: 'wind', shape: 'chick',  base: { hp: 66, atk: 33, def: 23, spd: 30 } },
+    rainbowfly:  { name: '彩蝶',       type: 'wind', shape: 'butterfly', evo: 'phantomfly', evoAt: 12, base: { hp: 34, atk: 14, def: 10, spd: 18 } },
+    phantomfly:  { name: '幻翅蝶',     type: 'wind', shape: 'butterfly', evo: 'irisfly', evoAt: 24, base: { hp: 48, atk: 23, def: 15, spd: 26 } },
+    irisfly:     { name: '虹光蝶',     type: 'wind', shape: 'butterfly', base: { hp: 64, atk: 32, def: 22, spd: 32 } },
+    cloudlark:   { name: '云雀',       type: 'wind', shape: 'lark',   evo: 'skylark',    evoAt: 12, base: { hp: 36, atk: 15, def: 11, spd: 19 } },
+    skylark:     { name: '云霄雀',     type: 'wind', shape: 'lark',   evo: 'heavenbird', evoAt: 24, base: { hp: 50, atk: 25, def: 17, spd: 28 } },
+    heavenbird:  { name: '苍穹圣鸟',   type: 'wind', shape: 'lark',   base: { hp: 68, atk: 34, def: 24, spd: 34 } },
+
+    /* --- 幽蚀 --- */
+    shadownet:   { name: '幽影蛛',     type: 'dark', shape: 'spider', evo: 'ghostspider', evoAt: 16, base: { hp: 40, atk: 16, def: 12, spd: 14 } },
+    ghostspider: { name: '鬼面蛛',     type: 'dark', shape: 'spider', base: { hp: 58, atk: 26, def: 19, spd: 19 } },
+    darkbat:     { name: '暗翼蝠',     type: 'dark', shape: 'bat',    evo: 'bloodbat',   evoAt: 18, base: { hp: 42, atk: 18, def: 13, spd: 18 } },
+    bloodbat:    { name: '血翼魔',     type: 'dark', shape: 'bat',    base: { hp: 60, atk: 28, def: 20, spd: 22 } },
+    eclipsewisp: { name: '蚀影',       type: 'dark', shape: 'wraith', evo: 'eclipsereaper', evoAt: 20, base: { hp: 44, atk: 17, def: 14, spd: 17 } },
+    eclipsereaper:{ name: '蚀魂使',    type: 'dark', shape: 'wraith', base: { hp: 64, atk: 30, def: 22, spd: 24 } },
+
+    /* --- 传说 --- */
+    unicorn:     { name: '虹角兽',     type: 'rainbow', shape: 'default', base: { hp: 74, atk: 30, def: 26, spd: 31 } },
+    eclipseking: { name: '蚀王',       type: 'dark', shape: 'wraith', base: { hp: 88, atk: 36, def: 27, spd: 25 } }
+  };
+
+  var TOTAL_SPECIES = Object.keys(SPECIES).length;
+
+  function statOf(p, key) {
+    var b = SPECIES[p.id].base[key];
+    return Math.round(b * (1 + 0.11 * (p.lv - 1)));
+  }
+  function maxhpOf(p) { return Math.round(SPECIES[p.id].base.hp * (1 + 0.12 * (p.lv - 1)) + 6); }
+  function newPet(id, lv) {
+    var p = { id: id, lv: lv, exp: 0, hp: 0 };
+    p.maxhp = maxhpOf(p);
+    p.hp = p.maxhp;
+    return p;
+  }
+  function needExp(lv) { return Math.round(19 * Math.pow(lv, 1.52)); }
+  function fullHeal(p) { p.maxhp = maxhpOf(p); p.hp = p.maxhp; }
+  function effOf(a, d) {
+    if (!a || !d) return 1;
+    if (a === 'rainbow') return 1.25;
+    if (d === 'rainbow') return 0.9;
+    if (a === 'dark' || d === 'dark') return 1;
+    if (BEATS[a] === d) return 1.5;
+    if (BEATS[d] === a) return 0.7;
+    return 1;
+  }
+  function evoIndex(id) {
+    var depth = 0, cur = id, guard = 0;
+    while (guard++ < 5) {
+      var parent = null;
+      for (var k in SPECIES) { if (SPECIES[k].evo === cur) { parent = k; break; } }
+      if (!parent) break;
+      depth++; cur = parent;
+    }
+    return depth;
+  }
+  function stage1Pool() {
+    var list = [];
+    for (var k in SPECIES) {
+      if (SPECIES[k].evo) list.push(k);
+    }
+    return list;
+  }
+
+  /* ============================ 地图与剧情 ============================ */
+
+  var ZONES = {
+    town:     { name: '虹光镇', theme: 'town', w: 22, h: 24, filler: 0.16, up: 'grass', wild: null },
+    grass:    { name: '青草原', theme: 'grass', w: 22, h: 26, filler: 0.24, up: 'forest', down: 'town',
+                wild: ['sprout', 'dewbud', 'chirp', 'fuzzpaw', 'streamcarp', 'rainbowfly'], lv: [3, 6], rate: 0.16 },
+    forest:   { name: '幽森', theme: 'forest', w: 22, h: 26, filler: 0.30, up: 'cave', down: 'grass',
+                wild: ['mossball', 'shadownet', 'ashare', 'bred_gear'], lv: [6, 10], rate: 0.17 },
+    cave:     { name: '岩铁洞窟', theme: 'cave', w: 22, h: 26, filler: 0.32, up: 'volcano', down: 'forest',
+                wild: ['gearling', 'boltling', 'shadownet', 'darkbat', 'geardog'], lv: [10, 14], rate: 0.18 },
+    volcano:  { name: '熔岩火山', theme: 'volcano', w: 22, h: 26, filler: 0.28, up: 'highland', down: 'cave',
+                wild: ['embertail', 'darkbat', 'fangcat', 'geardog', 'eclipsewisp'], lv: [13, 17], rate: 0.19 },
+    highland: { name: '风羽高地', theme: 'highland', w: 22, h: 26, filler: 0.22, up: 'sky', down: 'volcano',
+                wild: ['cloudlark', 'rainbowfly', 'rockhare', 'eclipsewisp', 'skylark'], lv: [16, 20], rate: 0.18 },
+    sky:      { name: '天空之塔', theme: 'sky', w: 20, h: 26, filler: 0.14, down: 'highland',
+                wild: ['phantomfly', 'rivethawk', 'ghostspider', 'unicorn', 'bloodbat'], lv: [18, 23], rate: 0.18 }
+  };
+
+  var ZMAPS = {};
+
+  function mulberry(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var STORY = {
+    mayor: [
+      '镇长禾：岚，你终于来了。最近镇上接连有宠物莫名其妙地消失。',
+      '镇长禾：牧场的芽芽、码头的水滴兽，连守夜人的暗翼蝠都不见了。',
+      '镇长禾：有位叫铃的调查员正在镇上，她说这些失踪和「灰烬之环」有关。',
+      '镇长禾：先去找铃，问清楚再出镇。路上，把这个带上。'
+    ],
+    ling: [
+      '铃：你就是禾说的那个孩子？我是铃，追查灰烬之环已经两年了。',
+      '铃：他们不抓宠物，只取走宠物身上的「虹光」——那是五系宠物维系王国的力量。',
+      '铃：草原、幽森、洞窟、火山……每处都留下一处抽取的痕迹。',
+      '铃：这些精灵球给你，路上遇到愿意同行的宠物，就收下它们。',
+      '铃：七天前，我弟弟也被他们带走了。所以我必须查到底。'
+    ],
+    duo: [
+      '铎：老骨头一把了，还能给你讲两句。',
+      '铎：草克水、水克铁、铁克兽、兽克风、风克草，绕着圈相克，记住就不会吃亏。',
+      '铎：宠物蛋要在路上走上两百多步才会孵，别急着丢。'
+    ],
+    shepherd: [
+      '牧童：草原上的芽芽很亲人，露蕊会开花，溪鲤只在浅水里出现。',
+      '牧童：往北是幽森。那里苔球很硬，没有金属系的伙伴会打得辛苦。'
+    ],
+    ranger: [
+      '守林人：幽森里的树在变灰，不是季节的缘故，是被抽走了虹光。',
+      '守林人：我看见穿灰袍的人往洞窟方向去了，带着一只齿轮犬。'
+    ],
+    miner: [
+      '矿工：洞窟深处来了个叫「锈」的家伙，占了北面的矿道。',
+      '矿工：他身边全是金属系的宠物，我劝你别硬碰。'
+    ],
+    traveler: [
+      '旅人：火山口的温度一天比一天高，那不是自然现象。',
+      '旅人：有个叫「烬」的人，在熔岩边架起了抽取虹光的装置。'
+    ],
+    windtalker: [
+      '风语者：高地是虹光汇聚之处，风里有五种颜色的光。',
+      '风语者：灰烬之环的第三个人——「影」，已经在塔下等了很久。',
+      '风语者：她说，只要蚀王醒来，王国就会重新分成五块。'
+    ],
+    dawn: [
+      '蚀王：又是你。你以为拆掉几处装置，就能拦住我？',
+      '蚀王：五系的虹光已经足够了。这个王国，本来就该碎掉。',
+      '岚：王国是五个地方一起选出来的，不是你一个人说了算！',
+      '蚀王：那就用你的宠物，来证明这句话。'
+    ],
+    win: [
+      '蚀王：……虹光，没有碎。',
+      '铃：结束了。谢谢你，岚。',
+      '镇长禾：塔顶的云散了，五色的光又回到王国上空。',
+      '（主线完成。你可以继续在世界里收集剩下的宠物。）'
+    ]
+  };
+
+  function buildZone(id) {
+    var z = ZONES[id], w = z.w, h = z.h;
+    var rand = mulberry(id.length * 977 + w * 31 + h * 7 + 12345);
+    var m = [], x, y;
+    for (y = 0; y < h; y++) {
+      var row = [];
+      for (x = 0; x < w; x++) {
+        var border = (x === 0 || y === 0 || x === w - 1 || y === h - 1);
+        row.push(border ? '#' : '.');
+      }
+      m.push(row);
+    }
+    var safe = {};
+    function carve(cx, cy, rad) {
+      for (var dy = -rad; dy <= rad; dy++) {
+        for (var dx = -rad; dx <= rad; dx++) {
+          var nx = cx + dx, ny = cy + dy;
+          if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1) {
+            m[ny][nx] = ',';
+            safe[nx + ',' + ny] = 1;
+          }
+        }
+      }
+    }
+    var cx = Math.floor(w / 2);
+    for (y = h - 2; y >= 1; y--) {
+      var sway = Math.round(Math.sin(y * 0.7) * 1.6);
+      carve(cx + sway, y, 0);
+      carve(cx, y, 0);
+    }
+    for (y = h - 2; y >= 1; y--) {
+      var sw2 = Math.round(Math.sin(y * 0.7) * 1.6);
+      safe[(cx + sw2) + ',' + y] = 1;
+      safe[cx + ',' + y] = 1;
+    }
+
+    var props = [];
+    if (id === 'town') {
+      props = [
+        { x: cx - 5, y: 7, t: 'heal' },
+        { x: cx + 5, y: 7, t: 'shop' },
+        { x: cx, y: 11, t: 'npc', name: '镇长禾', lines: STORY.mayor, act: 'mayor' },
+        { x: cx + 5, y: 14, t: 'npc', name: '铃', lines: STORY.ling, act: 'ling' },
+        { x: cx - 5, y: 16, t: 'npc', name: '铎', lines: STORY.duo },
+        { x: cx - 7, y: 19, t: 'chest', item: 'ball', n: 5 },
+        { x: cx + 7, y: 20, t: 'chest', item: 'egg', n: 1 }
+      ];
+    } else if (id === 'grass') {
+      props = [
+        { x: cx - 6, y: 8, t: 'chest', item: 'potion', n: 2 },
+        { x: cx + 6, y: 15, t: 'chest', item: 'ball', n: 4 },
+        { x: cx - 5, y: 21, t: 'npc', name: '牧童', lines: STORY.shepherd }
+      ];
+    } else if (id === 'forest') {
+      props = [
+        { x: cx - 7, y: 6, t: 'chest', item: 'superball', n: 2 },
+        { x: cx + 6, y: 12, t: 'chest', item: 'elixir', n: 1 },
+        { x: cx - 6, y: 19, t: 'npc', name: '守林人', lines: STORY.ranger }
+      ];
+    } else if (id === 'cave') {
+      props = [
+        { x: cx - 6, y: 6, t: 'chest', item: 'egg', n: 1 },
+        { x: cx + 6, y: 16, t: 'chest', item: 'superball', n: 3 },
+        { x: cx - 7, y: 21, t: 'npc', name: '矿工', lines: STORY.miner },
+        { x: cx + 4, y: 8, t: 'foe', name: '锈', species: 'geardog', lv: 15, flag: 'foe_cave',
+          pre: ['锈：哦？镇上的孩子也敢闯矿道。', '锈：正好，我的齿轮犬缺一顿晚饭。'],
+          post: ['锈：……齿轮，卡住了。', '铃：我拿到了他身上的抽取器图纸，灰烬之环在给蚀王供能。'] }
+      ];
+    } else if (id === 'volcano') {
+      props = [
+        { x: cx - 6, y: 6, t: 'chest', item: 'superball', n: 3 },
+        { x: cx + 6, y: 15, t: 'chest', item: 'elixir', n: 2 },
+        { x: cx - 6, y: 20, t: 'npc', name: '旅人', lines: STORY.traveler },
+        { x: cx + 4, y: 9, t: 'foe', name: '烬', species: 'emberwolf', lv: 20, flag: 'foe_volcano',
+          pre: ['烬：虹光真暖和啊，孩子。', '烬：你身上那只宠物，光也很足——留下它。'],
+          post: ['烬：火……灭了。', '铃：装置停了，但塔顶已经开始了。快去风羽高地！'] }
+      ];
+    } else if (id === 'highland') {
+      props = [
+        { x: cx - 6, y: 7, t: 'chest', item: 'egg', n: 1 },
+        { x: cx + 6, y: 16, t: 'chest', item: 'elixir', n: 2 },
+        { x: cx - 6, y: 21, t: 'npc', name: '风语者', lines: STORY.windtalker },
+        { x: cx + 4, y: 8, t: 'foe', name: '影', species: 'ghostspider', lv: 23, flag: 'foe_highland',
+          pre: ['影：铃的弟弟？他还活着，只是没有虹光了。', '影：你也想被抽干吗，孩子？'],
+          post: ['影：影子……被光穿透了。', '铃：塔门开了。岚，最后一段路，我陪你走。'] }
+      ];
+    } else if (id === 'sky') {
+      props = [{ x: cx, y: 2, t: 'boss' }];
+    }
+
+    props.forEach(function (p) {
+      var py = p.y;
+      var minx = Math.min(cx, p.x), maxx = Math.max(cx, p.x);
+      for (var px2 = minx; px2 <= maxx; px2++) {
+        if (py > 0 && py < h - 1) { m[py][px2] = ','; safe[px2 + ',' + py] = 1; }
+      }
+      carve(p.x, p.y, 1);
+      if (p.x > 0 && p.x < w - 1) { m[p.y][p.x] = ','; safe[p.x + ',' + p.y] = 1; }
+    });
+
+    for (y = 1; y < h - 1; y++) {
+      for (x = 1; x < w - 1; x++) {
+        if (safe[x + ',' + y]) continue;
+        var r = rand();
+        if (r < z.filler) m[y][x] = '#';
+        else if (r < z.filler + 0.03 && (id === 'grass' || id === 'forest' || id === 'highland')) m[y][x] = '~';
+      }
+    }
+
+    if (z.up) {
+      m[0][cx] = 'P'; m[0][cx + 1] = 'P';
+      m[1][cx] = ','; safe[cx + ',' + 1] = 1;
+      m[1][cx + 1] = ','; safe[(cx + 1) + ',' + 1] = 1;
+    }
+    if (z.down) { m[h - 2][cx] = 'P'; m[h - 2][cx + 1] = 'P'; }
+    if (id === 'sky') { m[1][cx] = ','; m[1][cx + 1] = ','; }
+
+    props.forEach(function (p) {
+      var code = p.t === 'heal' ? 'H' : p.t === 'shop' ? 'S' : p.t === 'chest' ? 'C'
+        : p.t === 'boss' ? 'B' : p.t === 'foe' ? 'K' : 'N';
+      m[p.y][p.x] = code;
+    });
+
+    ZMAPS[id] = { map: m, w: w, h: h, props: props, cx: cx };
+    return ZMAPS[id];
+  }
+
+  function getZone(id) { return ZMAPS[id] || buildZone(ZONES[id] ? id : 'town'); }
+
+  /* ============================ 状态 ============================ */
+
+  var SAVE_KEY = 'rainbow_pet_save_v2';
+  var ST = {
+    mode: 'title', zone: 'town', px: 11, py: 21, dir: 'up', mv: null,
+    party: [], box: [], gold: 0,
+    items: { ball: 5, superball: 0, potion: 2, elixir: 0, egg: 0 },
+    flags: {}, steps: 0, eggSteps: 0, time: 0, quest: '向镇长禾打听宠物失踪的事',
+    dialog: null, battle: null, shopMsg: '', menuMsg: '', toast: '', toastT: 0,
+    ended: false, camx: 0, camy: 0, hatchNote: ''
+  };
+
+  function toast(msg) { ST.toast = msg; ST.toastT = 2.2; }
+  function lead() { return ST.party[0]; }
+
+  function saveGame(silent) {
+    try {
+      var data = {
+        zone: ST.zone, px: ST.px, py: ST.py, party: ST.party, box: ST.box,
+        gold: ST.gold, items: ST.items, flags: ST.flags, steps: ST.steps,
+        eggSteps: ST.eggSteps, ended: ST.ended, quest: ST.quest
+      };
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+      if (!silent) toast('已保存进度');
+    } catch (e) { toast('保存失败'); }
+  }
+  function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
+  function loadGame() {
+    try {
+      var d = JSON.parse(localStorage.getItem(SAVE_KEY));
+      if (!d) return false;
+      ST.zone = ZONES[d.zone] ? d.zone : 'town';
+      ST.px = d.px || 11; ST.py = d.py || 21;
+      ST.party = d.party || []; ST.box = d.box || [];
+      ST.gold = d.gold || 0;
+      ST.items = Object.assign({ ball: 5, superball: 0, potion: 2, elixir: 0, egg: 0 }, d.items || {});
+      ST.flags = d.flags || {}; ST.steps = d.steps || 0;
+      ST.eggSteps = d.eggSteps || 0; ST.ended = !!d.ended;
+      ST.quest = d.quest || '继续探索';
+      ST.party.forEach(function (p) { p.maxhp = maxhpOf(p); if (p.hp > p.maxhp) p.hp = p.maxhp; });
+      getZone(ST.zone);
+      ST.mode = 'field'; ST.mv = null;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ============================ 输入 ============================ */
+
+  var hits = [];
+  var pointer = { active: false, dir: null, x: 0, y: 0 };
+  var keyDir = null;
+  var DPAD = { cx: 78, cy: 548, r: 72 };
+  var MENUBTN = { cx: 300, cy: 566, r: 34 };
+
+  function addHit(x, y, w, h, fn) { hits.push({ x: x, y: y, w: w, h: h, fn: fn }); }
+  function inside(vx, vy, h) { return vx >= h.x && vx <= h.x + h.w && vy >= h.y && vy <= h.y + h.h; }
+  function tapAt(vx, vy) {
+    var list = hits.slice();
+    for (var i = list.length - 1; i >= 0; i--) {
+      if (inside(vx, vy, list[i])) { list[i].fn(); return true; }
+    }
+    return false;
+  }
+  function vCoord(e) {
+    var rect = cvs.getBoundingClientRect();
+    return { x: (e.clientX - rect.left - ox) / scale, y: (e.clientY - rect.top - oy) / scale };
+  }
+
+  cvs.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var p = vCoord(e);
+    pointer.active = true; pointer.x = p.x; pointer.y = p.y;
+    if (ST.mode === 'field') {
+      var dx = p.x - DPAD.cx, dy = p.y - DPAD.cy;
+      if (dx * dx + dy * dy < DPAD.r * DPAD.r) {
+        pointer.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+        return;
+      }
+      var mx = p.x - MENUBTN.cx, my = p.y - MENUBTN.cy;
+      if (mx * mx + my * my < MENUBTN.r * MENUBTN.r) { openMenu(); return; }
+    }
+    if (tapAt(p.x, p.y)) return;
+    if (ST.mode === 'dialog') advanceDialog();
+  });
+  cvs.addEventListener('pointermove', function (e) {
+    if (!pointer.active || ST.mode !== 'field') return;
+    var p = vCoord(e); pointer.x = p.x; pointer.y = p.y;
+    var dx = p.x - DPAD.cx, dy = p.y - DPAD.cy;
+    if (dx * dx + dy * dy < DPAD.r * DPAD.r) {
+      pointer.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    }
+  });
+  function clearPointer() { pointer.active = false; pointer.dir = null; }
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { cvs.addEventListener(ev, clearPointer); });
+
+  window.addEventListener('keydown', function (e) {
+    var k = e.key.toLowerCase();
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].indexOf(k) >= 0) e.preventDefault();
+    if (k === 'arrowup' || k === 'w') keyDir = 'up';
+    if (k === 'arrowdown' || k === 's') keyDir = 'down';
+    if (k === 'arrowleft' || k === 'a') keyDir = 'left';
+    if (k === 'arrowright' || k === 'd') keyDir = 'right';
+    if (k === 'enter' || k === 'z' || k === ' ') {
+      if (ST.mode === 'dialog') advanceDialog();
+      else if (ST.mode === 'title') startNewOrContinue();
+    }
+    if (k === 'escape' || k === 'x') { if (ST.mode === 'field') openMenu(); }
+  });
+  window.addEventListener('keyup', function (e) {
+    var k = e.key.toLowerCase();
+    if ((k === 'arrowup' || k === 'w') && keyDir === 'up') keyDir = null;
+    if ((k === 'arrowdown' || k === 's') && keyDir === 'down') keyDir = null;
+    if ((k === 'arrowleft' || k === 'a') && keyDir === 'left') keyDir = null;
+    if ((k === 'arrowright' || k === 'd') && keyDir === 'right') keyDir = null;
+  });
+
+  /* ============================ 对话 ============================ */
+
+  function say(lines, cb) {
+    if (typeof lines === 'string') lines = [lines];
+    ST.dialog = { lines: lines, i: 0, cb: cb || null };
+    ST.mode = 'dialog';
+  }
+  function advanceDialog() {
+    if (!ST.dialog) { ST.mode = 'field'; return; }
+    ST.dialog.i++;
+    if (ST.dialog.i >= ST.dialog.lines.length) {
+      var cb = ST.dialog.cb; ST.dialog = null;
+      ST.mode = 'field';
+      if (cb) cb();
+    }
+  }
+
+  function openMenu() { ST.mode = 'menu'; ST.menuMsg = ''; }
+  function openBag() { ST.mode = 'bag'; ST.menuMsg = ''; }
+
+  /* ============================ 战斗 ============================ */
+
+  function zoneWild(zoneId) {
+    var z = ZONES[zoneId];
+    if (!z || !z.wild) return null;
+    var pool = z.wild.filter(function (sp) { return SPECIES[sp]; });
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    var lv = z.lv[0] + Math.floor(Math.random() * (z.lv[1] - z.lv[0] + 1));
+    return newPet(pick, lv);
+  }
+
+  function startBattle(enemy, isBoss, onWin) {
+    if (!lead() || lead().hp <= 0) {
+      var firstAlive = ST.party.findIndex(function (p) { return p.hp > 0; });
+      if (firstAlive > 0) { var tmp = ST.party[0]; ST.party[0] = ST.party[firstAlive]; ST.party[firstAlive] = tmp; }
+    }
+    ST.battle = {
+      enemy: enemy, isBoss: !!isBoss, phase: 'menu', busy: false, onWin: onWin || null,
+      log: [], flash: 0, shake: 0, over: false, result: null
+    };
+    ST.mode = 'battle';
+    blog((isBoss ? '『' : '野生的 ') + SPECIES[enemy.id].name + (isBoss ? '』出现了！' : ' 出现了！'));
+  }
+  function blog(t) {
+    var b = ST.battle; if (!b) return;
+    b.log.push(t);
+    if (b.log.length > 4) b.log.shift();
+  }
+
+  function calcDamage(attacker, defender, power, type) {
+    var A = statOf(attacker, 'atk'), D = statOf(defender, 'def');
+    var base = power * (A / D) * 0.36 + attacker.lv * 0.8;
+    var e = effOf(type, SPECIES[defender.id].type);
+    var dmg = Math.max(2, Math.round(base * (0.9 + Math.random() * 0.2) * e));
+    return { dmg: dmg, e: e };
+  }
+
+  function levelCheck(p) {
+    var msgs = [];
+    var guard = 0;
+    while (p.exp >= needExp(p.lv) && p.lv < 40 && guard++ < 20) {
+      p.exp -= needExp(p.lv);
+      p.lv++;
+      var oldMax = p.maxhp;
+      p.maxhp = maxhpOf(p);
+      p.hp += p.maxhp - oldMax;
+      msgs.push(SPECIES[p.id].name + ' 升到了 ' + p.lv + ' 级！');
+      var sp = SPECIES[p.id];
+      if (sp.evo && sp.evoAt && p.lv >= sp.evoAt && SPECIES[sp.evo]) {
+        p.id = sp.evo;
+        p.maxhp = maxhpOf(p); p.hp = p.maxhp;
+        ST.flags['seen_' + p.id] = 1;
+        msgs.push('哇！进化成了 ' + SPECIES[p.id].name + '！');
+      }
+    }
+    return msgs;
+  }
+
+  function enemyTurn() {
+    var b = ST.battle;
+    if (!b || b.over) return;
+    var p = lead();
+    if (!p || p.hp <= 0) return;
+    var sp = SPECIES[b.enemy.id];
+    var tier = b.enemy.lv >= 16 ? 2 : b.enemy.lv >= 8 ? 1 : 0;
+    var mv = MOVES[sp.type][Math.min(2, tier)];
+    var res = calcDamage(b.enemy, p, mv.p, sp.type);
+    p.hp = Math.max(0, p.hp - res.dmg);
+    b.shake = 0.35; b.flash = 0.25;
+    var tail = res.e > 1.2 ? '（效果拔群！）' : res.e < 0.9 ? '（效果不太好……）' : '';
+    blog('『' + sp.name + '』使用了 ' + mv.n + '，造成 ' + res.dmg + ' 点伤害' + tail);
+    if (p.hp <= 0) {
+      blog(SPECIES[p.id].name + ' 倒下了……');
+      var alive = ST.party.filter(function (q) { return q.hp > 0; })[0];
+      if (!alive) { defeat(); return; }
+      var idx = ST.party.indexOf(alive);
+      if (idx > 0) { ST.party[0] = alive; ST.party[idx] = p; }
+      blog('自动换上 ' + SPECIES[alive.id].name + '！');
+    }
+  }
+
+  function playerSkill(moveIdx) {
+    var b = ST.battle;
+    if (!b || b.busy || b.over) return;
+    var p = lead();
+    if (!p) return;
+    var sp = SPECIES[p.id];
+    var mv = MOVES[sp.type][moveIdx];
+    if (!mv) return;
+    ST.flags['seen_' + b.enemy.id] = 1;
+    var res = calcDamage(p, b.enemy, mv.p, sp.type);
+    b.enemy.hp = Math.max(0, b.enemy.hp - res.dmg);
+    b.flash = 0.25;
+    var tail = res.e > 1.2 ? '（效果拔群！）' : res.e < 0.9 ? '（效果不太好……）' : '';
+    blog(SPECIES[p.id].name + ' 使用了 ' + mv.n + '，造成 ' + res.dmg + ' 点伤害' + tail);
+    if (b.enemy.hp <= 0) { winBattle(); return; }
+    b.phase = 'log';
+    b.busy = true;
+    setTimeout(function () {
+      if (!ST.battle || ST.battle !== b || b.over) return;
+      b.busy = false;
+      enemyTurn();
+      if (!b.over) b.phase = 'menu';
+    }, 620);
+  }
+
+  function captureChance(b, tier) {
+    var hpRatio = b.enemy.hp / b.enemy.maxhp;
+    var base = (1 - 0.75 * hpRatio) * (tier === 2 ? 1.85 : 1) * 0.55 + 0.02;
+    if (b.isBoss) base *= 0.35;
+    return Math.max(0.02, Math.min(0.94, base));
+  }
+
+  function tryThrow(tier) {
+    var b = ST.battle;
+    if (!b || b.busy || b.over) return;
+    var key = tier === 2 ? 'superball' : 'ball';
+    if (!ST.items[key] || ST.items[key] <= 0) { toast('没有' + (tier === 2 ? '高级球' : '精灵球') + '了'); return; }
+    ST.items[key]--;
+    var p = captureChance(b, tier);
+    b.busy = true;
+    blog('你丢出了' + (tier === 2 ? '高级球' : '精灵球') + '！');
+    if (Math.random() < p) {
+      var caught = b.enemy;
+      ST.flags['seen_' + caught.id] = 1;
+      blog('捕捉成功！' + SPECIES[caught.id].name + ' 加入了队伍！');
+      if (ST.party.length < 6) ST.party.push(caught);
+      else { ST.box.push(caught); blog('队伍已满，' + SPECIES[caught.id].name + ' 被送往牧场。'); }
+      b.over = true; b.result = 'catch';
+      setTimeout(function () {
+        if (ST.battle !== b) return;
+        ST.battle = null; ST.mode = 'field';
+        fullHeal(caught);
+        toast('捕捉成功：' + SPECIES[caught.id].name);
+      }, 800);
+    } else {
+      blog('……球被挣脱了！');
+      setTimeout(function () {
+        if (!ST.battle || ST.battle !== b || b.over) return;
+        b.busy = false; enemyTurn();
+        if (!b.over) b.phase = 'menu';
+      }, 700);
+    }
+  }
+
+  function winBattle() {
+    var b = ST.battle;
+    b.over = true; b.result = 'win';
+    var e = b.enemy;
+    var goldGain = e.lv * 6 + 10 + (b.isBoss ? 500 : 0);
+    var expGain = e.lv * 13 + 12;
+    ST.gold += goldGain;
+    var msgs = [];
+    var p = lead();
+    if (p) { p.exp += expGain; msgs = levelCheck(p); }
+    blog('击倒了『' + SPECIES[e.id].name + '』！获得 ' + goldGain + ' 金币、' + expGain + ' 经验。');
+    msgs.forEach(function (m) { blog(m); });
+    ST.party.slice(1).forEach(function (q) { q.exp += Math.round(expGain * 0.4); levelCheck(q); });
+    if (b.isBoss) {
+      ST.flags.bossDown = 1;
+      ST.ended = true;
+      ST.quest = '主线完成：虹光重回王国';
+    }
+  }
+
+  function defeat() {
+    var b = ST.battle;
+    if (!b) return;
+    b.over = true; b.result = 'lose';
+    blog('你的队伍全灭了……');
+    var lost = Math.round(ST.gold * 0.3);
+    ST.gold -= lost;
+    ST.party.forEach(fullHeal);
+    setTimeout(function () {
+      ST.battle = null;
+      ST.mode = 'field';
+      ST.zone = 'town';
+      var zt = getZone('town');
+      ST.px = zt.cx; ST.py = 16; ST.dir = 'up'; ST.mv = null;
+      say(['路过的商队把你送回了虹光镇。', '损失了 ' + lost + ' 金币，伙伴们恢复了精神。']);
+    }, 900);
+  }
+
+  function playerRun() {
+    var b = ST.battle;
+    if (!b || b.busy || b.over) return;
+    if (b.isBoss) { blog('在蚀王面前，无路可退！'); return; }
+    if (Math.random() < 0.75) {
+      b.over = true; b.result = 'run';
+      blog('成功逃走了！');
+      setTimeout(function () { ST.battle = null; ST.mode = 'field'; }, 600);
+    } else {
+      blog('没能逃掉！');
+      b.busy = true;
+      setTimeout(function () {
+        if (!ST.battle || ST.battle !== b || b.over) return;
+        b.busy = false; enemyTurn(); if (!b.over) b.phase = 'menu';
+      }, 600);
+    }
+  }
+
+  function endBattleTurnIfOver() {
+    var b = ST.battle;
+    if (!b || !b.over) return;
+    var result = b.result;
+    var onWin = b.onWin;
+    var isBoss = b.isBoss;
+    ST.battle = null;
+    if (result === 'win' && isBoss) {
+      ST.mode = 'ending';
+      saveGame();
+      return;
+    }
+    ST.mode = 'field';
+    if (result === 'win' && onWin) onWin();
+  }
+
+  /* ============================ 野外 ============================ */
+
+  function tileChar(z, x, y) {
+    if (x < 0 || y < 0 || x >= z.w || y >= z.h) return '#';
+    return z.map[y][x];
+  }
+  function isWalkable(ch) { return ch !== '#' && ch !== '~'; }
+  function propAt(z, x, y) {
+    return z.props.filter(function (p) { return p.x === x && p.y === y; })[0];
+  }
+
+  function startStep(dir) {
+    var z = getZone(ST.zone);
+    var tx = Math.round(ST.px), ty = Math.round(ST.py);
+    var nx = tx, ny = ty;
+    if (dir === 'up') ny--;
+    else if (dir === 'down') ny++;
+    else if (dir === 'left') nx--;
+    else if (dir === 'right') nx++;
+    ST.dir = dir;
+    var ch = tileChar(z, nx, ny);
+    if (!isWalkable(ch)) return;
+    ST.mv = { fx: ST.px, fy: ST.py, tx: nx, ty: ny, t: 0, dur: 0.17 };
+  }
+
+  function checkEgg(dt) {
+    if (!ST.items.egg || ST.items.egg <= 0) return;
+    ST.eggSteps += 1;
+    if (ST.eggSteps >= 220) {
+      ST.eggSteps = 0;
+      ST.items.egg--;
+      var pool = stage1Pool();
+      var id = pool[Math.floor(Math.random() * pool.length)];
+      var pet = newPet(id, 5);
+      ST.flags['seen_' + id] = 1;
+      if (ST.party.length < 6) ST.party.push(pet); else ST.box.push(pet);
+      ST.hatchNote = '宠物蛋孵化了：' + SPECIES[id].name + '！';
+      say(['蛋壳裂开了——', '孵化成功！' + SPECIES[id].name + ' 加入了队伍。']);
+    }
+  }
+
+  function updateQuest(flag) {
+    if (flag === 'mayor') ST.quest = '前往镇东找调查员铃';
+    else if (flag === 'ling') ST.quest = '穿过青草原，去幽森查虹光失窃的痕迹';
+    else if (flag === 'foe_cave') ST.quest = '前往熔岩火山，阻止干部「烬」';
+    else if (flag === 'foe_volcano') ST.quest = '登上风羽高地，对付干部「影」';
+    else if (flag === 'foe_highland') ST.quest = '登上天空之塔，阻止蚀王苏醒';
+    else if (flag === 'bossDown') ST.quest = '主线完成：虹光重回王国';
+    toast('目标更新：' + ST.quest);
+  }
+
+  function afterStep() {
+    var z = getZone(ST.zone);
+    var x = Math.round(ST.px), y = Math.round(ST.py);
+    var ch = tileChar(z, x, y);
+
+    if (ch === 'P') {
+      var zdef = ZONES[ST.zone];
+      if (ST.dir === 'up' && zdef.up) { travel(zdef.up, 'up'); return; }
+      if (ST.dir === 'down' && zdef.down) { travel(zdef.down, 'down'); return; }
+    }
+    if (ch === 'H') {
+      ST.party.forEach(fullHeal);
+      say(['治愈屋：欢迎回来！', '伙伴们已经完全恢复了。']);
+      return;
+    }
+    if (ch === 'S') { ST.mode = 'shop'; ST.shopMsg = ''; return; }
+    if (ch === 'C') {
+      var pr = propAt(z, x, y);
+      var key = 'chest_' + ST.zone + '_' + x + '_' + y;
+      if (pr && !ST.flags[key]) {
+        ST.flags[key] = 1;
+        var names = { ball: '精灵球', superball: '高级球', potion: '药水', elixir: '万能药', egg: '宠物蛋' };
+        ST.items[pr.item] = (ST.items[pr.item] || 0) + pr.n;
+        say(['打开了宝箱！', '获得了 ' + names[pr.item] + ' ×' + pr.n + '。']);
+      } else {
+        say(['宝箱已经空了。']);
+      }
+      return;
+    }
+    if (ch === 'N') {
+      var npc = propAt(z, x, y);
+      if (npc) {
+        if (npc.act && ST.flags['talk_' + npc.act]) {
+          say([npc.name + '：路上小心，岚。']);
+          return;
+        }
+        say(npc.lines, function () {
+          if (npc.act) {
+            ST.flags['talk_' + npc.act] = 1;
+            if (npc.act === 'ling' && !ST.flags.gift_ling) {
+              ST.flags.gift_ling = 1;
+              ST.items.ball += 5;
+              updateQuest('ling');
+              say(['（获得精灵球 ×5）']);
+            } else {
+              updateQuest(npc.act);
+            }
+          }
+        });
+      }
+      return;
+    }
+    if (ch === 'K') {
+      var foe = propAt(z, x, y);
+      if (foe && !ST.flags[foe.flag]) {
+        say(foe.pre, function () {
+          startBattle(newPet(foe.species, foe.lv), false, function () {
+            ST.flags[foe.flag] = 1;
+            updateQuest(foe.flag);
+            say(foe.post);
+            if (foe.flag === 'foe_cave') { ST.items.superball += 2; }
+            if (foe.flag === 'foe_volcano') { ST.items.elixir += 1; }
+            if (foe.flag === 'foe_highland') { ST.items.superball += 3; }
+          });
+        });
+      } else if (foe) {
+        say([foe.name + '已经不在原地了。']);
+      }
+      return;
+    }
+    if (ch === 'B') {
+      if (!ST.flags.bossDown) {
+        if (!ST.flags.foe_highland) {
+          say(['塔门紧闭，需要先解决高地上的「影」。']);
+        } else {
+          say(STORY.dawn, function () { startBattle(newPet('eclipseking', 28), true); });
+        }
+      } else {
+        say(['王座已经空了。虹光重新照在王国上空。']);
+      }
+      return;
+    }
+
+    var zw = ZONES[ST.zone];
+    if (zw.wild && ch === '.' && lead() && lead().hp > 0) {
+      ST.steps++;
+      checkEgg();
+      var chance = zw.rate + Math.min(0.2, ST.steps * 0.01);
+      if (Math.random() < chance) {
+        ST.steps = 0;
+        var wild = zoneWild(ST.zone);
+        if (wild) startBattle(wild, false, null);
+      }
+    } else if (ch === ',') {
+      checkEgg();
+    }
+  }
+
+  function travel(toZone, dir) {
+    var zt = getZone(toZone);
+    ST.zone = toZone;
+    ST.px = zt.cx;
+    ST.py = dir === 'up' ? zt.h - 3 : 2;
+    ST.dir = dir; ST.mv = null;
+    toast(ZONES[toZone].name);
+    saveGame();
+  }
+
+  /* ============================ 绘制工具 ============================ */
+
+  function rr2(x, y, w, h, r) {
+    ctx.beginPath();
+    var rad = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+  function panel(x, y, w, h, alpha, radius) {
+    rr2(x, y, w, h, radius === undefined ? 10 : radius);
+    ctx.fillStyle = 'rgba(24,18,38,' + (alpha === undefined ? 0.86 : alpha) + ')';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,232,160,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  function text(s, x, y, size, color, align, weight) {
+    ctx.font = (weight || '600') + ' ' + size + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = color || '#fff';
+    ctx.textAlign = align || 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(s, x, y);
+  }
+  function button(label, x, y, w, h, fn, style) {
+    var fill = style === 'main' ? 'rgba(255,196,66,0.95)' : style === 'warn' ? 'rgba(214,78,72,0.92)' : 'rgba(255,255,255,0.13)';
+    rr2(x, y, w, h, 12);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,200,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    text(label, x + w / 2, y + h / 2 + 1, Math.min(17, 16), style === 'main' ? '#3a2410' : '#fff', 'center', '700');
+    addHit(x, y, w, h, fn);
+  }
+  function wrapText(s, maxW, size) {
+    ctx.font = '600 ' + size + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+    var lines = [], cur = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s[i];
+      if (ctx.measureText(cur + c).width > maxW) { lines.push(cur); cur = c; }
+      else cur += c;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  /* ============================ 场景绘制 ============================ */
+
+  var THEMES = {
+    town:     { floor: '#74bf55', floor2: '#68b04a', path: '#dcc28c', path2: '#cdb079', obj: '#3f8f3a', sky: '#8fd3ff' },
+    grass:    { floor: '#6fbb4e', floor2: '#63ad46', path: '#d6bd84', path2: '#c6ac74', obj: '#377f38', sky: '#94d7ff' },
+    forest:   { floor: '#3f7d47', floor2: '#356d3d', path: '#8f7c53', path2: '#7d6c46', obj: '#22552f', sky: '#2e4a3a' },
+    cave:     { floor: '#585466', floor2: '#4e4a5c', path: '#7a7488', path2: '#6b6579', obj: '#37333f', sky: '#1e1a26' },
+    volcano:  { floor: '#6b3b33', floor2: '#5d332c', path: '#8d5c3f', path2: '#7c4f36', obj: '#37211d', sky: '#2a1512' },
+    highland: { floor: '#86b96a', floor2: '#7aac5f', path: '#d8d2b2', path2: '#c7c1a2', obj: '#4f7f52', sky: '#b8e4ff' },
+    sky:      { floor: '#a9d4ef', floor2: '#98c7e5', path: '#e8f4ff', path2: '#d6e9f8', obj: '#7fa9c9', sky: '#7fc4f2' }
+  };
+
+  function drawTile(theme, ch, sx, sy, t) {
+    var c = THEMES[theme] || THEMES.grass;
+    ctx.fillStyle = ch === ',' ? c.path : c.floor;
+    ctx.fillRect(sx, sy, TS + 1, TS + 1);
+    if (ch === '.' || ch === ',') {
+      if ((Math.floor(sx / TS) + Math.floor(sy / TS)) % 2 === 0) {
+        ctx.fillStyle = ch === ',' ? c.path2 : c.floor2;
+        ctx.fillRect(sx, sy, TS + 1, TS + 1);
+      }
+      if (theme !== 'sky' && theme !== 'cave' && theme !== 'volcano') {
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';
+        ctx.fillRect(sx + 5, sy + 8, 2, 5);
+        ctx.fillRect(sx + 14, sy + 13, 2, 5);
+      }
+    }
+    if (ch === '~') {
+      var g = ctx.createLinearGradient(sx, sy, sx, sy + TS);
+      if (theme === 'volcano') { g.addColorStop(0, '#ff8a3c'); g.addColorStop(1, '#c9291b'); }
+      else { g.addColorStop(0, '#58b7ee'); g.addColorStop(1, '#2a7ec4'); }
+      ctx.fillStyle = g;
+      ctx.fillRect(sx, sy, TS + 1, TS + 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      var ph = Math.sin(t * 2 + sx * 0.05) * 3;
+      ctx.fillRect(sx + 3 + ph, sy + 8, 10, 2);
+    }
+    if (ch === '#') {
+      if (theme === 'cave' || theme === 'volcano') {
+        ctx.fillStyle = c.obj;
+        rr2(sx + 1, sy + 1, TS - 2, TS - 2, 6); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        rr2(sx + 4, sy + 4, TS - 12, TS - 14, 4); ctx.fill();
+      } else if (theme === 'sky') {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath(); ctx.arc(sx + 12, sy + 13, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx + 6, sy + 16, 7, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = '#6b4527';
+        ctx.fillRect(sx + 10, sy + 12, 4, 10);
+        ctx.fillStyle = c.obj;
+        ctx.beginPath(); ctx.arc(sx + 12, sy + 10, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx + 5, sy + 14, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx + 19, sy + 14, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.beginPath(); ctx.arc(sx + 9, sy + 7, 4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    if (ch === 'P') {
+      ctx.fillStyle = 'rgba(120,220,255,0.55)';
+      ctx.fillRect(sx, sy, TS + 1, TS + 1);
+      ctx.beginPath(); ctx.arc(sx + 12, sy + 12, 7 + Math.sin(t * 3) * 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath(); ctx.arc(sx + 12, sy + 12, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawProps(theme, ch, sx, sy, t, z, x, y) {
+    if (ch === 'H') {
+      ctx.fillStyle = '#f3f7ff';
+      rr2(sx - 6, sy - 12, TS + 12, TS + 12, 5); ctx.fill();
+      ctx.fillStyle = '#e05a5a';
+      rr2(sx - 6, sy - 12, TS + 12, 7, 4); ctx.fill();
+      ctx.fillStyle = '#d94b4b';
+      ctx.fillRect(sx + 9, sy - 4, 6, 16);
+      ctx.fillRect(sx + 4, sy + 1, 16, 6);
+    } else if (ch === 'S') {
+      ctx.fillStyle = '#f7e0a5';
+      rr2(sx - 6, sy - 10, TS + 12, TS + 10, 4); ctx.fill();
+      ctx.fillStyle = '#8b5a2b';
+      ctx.fillRect(sx - 6, sy - 2, TS + 12, 6);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(sx + 2, sy + 4, 5, 8);
+      ctx.fillStyle = '#5a8fd6';
+      ctx.fillRect(sx + 9, sy + 4, 5, 8);
+    } else if (ch === 'C') {
+      ctx.fillStyle = '#b0703c';
+      rr2(sx + 1, sy + 8, 22, 14, 4); ctx.fill();
+      ctx.fillStyle = '#e0aa54';
+      rr2(sx + 1, sy + 5, 22, 7, 4); ctx.fill();
+      ctx.fillStyle = '#ffd447';
+      ctx.fillRect(sx + 10, sy + 9, 4, 7);
+    } else if (ch === 'B') {
+      ctx.save();
+      ctx.globalAlpha = 0.75 + Math.sin(t * 2) * 0.2;
+      ctx.fillStyle = 'rgba(120,50,190,0.85)';
+      ctx.beginPath(); ctx.arc(sx + 12, sy + 10, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ff5f9e';
+      ctx.beginPath(); ctx.arc(sx + 8, sy + 8, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx + 16, sy + 8, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    } else if (ch === 'K') {
+      var foe = z.props.filter(function (p) { return p.x === x && p.y === y; })[0];
+      var done = foe && ST.flags[foe.flag];
+      ctx.save();
+      ctx.globalAlpha = done ? 0.25 : 0.9;
+      ctx.fillStyle = done ? '#6b6478' : '#3a2a55';
+      ctx.beginPath();
+      ctx.moveTo(sx + 5, sy + 23);
+      ctx.lineTo(sx + 12, sy + 2);
+      ctx.lineTo(sx + 19, sy + 23);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = done ? '#8d8598' : '#ff5f9e';
+      ctx.beginPath(); ctx.arc(sx + 10, sy + 10, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx + 15, sy + 10, 2.2, 0, Math.PI * 2); ctx.fill();
+      if (!done) {
+        ctx.globalAlpha = 0.4 + Math.sin(t * 2) * 0.2;
+        ctx.strokeStyle = '#c17bff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(sx + 12, sy + 14, 11, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    } else if (ch === 'N') {
+      drawTrainer(ctx, sx + 12, sy + 22, 24, 'up', t, false);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(sx + 12, sy - 4, 3 + Math.sin(t * 3) * 1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawField() {
+    var z = getZone(ST.zone);
+    var theme = ZONES[ST.zone].theme;
+    var camx = Math.max(0, Math.min(z.w * TS - VW, ST.px * TS + TS / 2 - VW / 2));
+    var camy = Math.max(0, Math.min(z.h * TS - VH, ST.py * TS + TS / 2 - VH / 2));
+    if (z.w * TS < VW) camx = (z.w * TS - VW) / 2;
+    if (z.h * TS < VH) camy = (z.h * TS - VH) / 2;
+    ST.camx = camx; ST.camy = camy;
+
+    var c = THEMES[theme];
+    ctx.fillStyle = c.sky;
+    ctx.fillRect(0, 0, VW, VH);
+
+    var x0 = Math.floor(camx / TS), x1 = Math.ceil((camx + VW) / TS);
+    var y0 = Math.floor(camy / TS), y1 = Math.ceil((camy + VH) / TS);
+    for (var y = y0; y <= y1; y++) {
+      for (var x = x0; x <= x1; x++) {
+        var ch = tileChar(z, x, y);
+        var sx = Math.round(x * TS - camx), sy = Math.round(y * TS - camy);
+        drawTile(theme, ch, sx, sy, ST.time);
+        drawProps(theme, ch, sx, sy, ST.time, z, x, y);
+      }
+    }
+
+    var psx = ST.px * TS - camx, psy = ST.py * TS - camy;
+    var lp = lead();
+    if (lp) {
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      var bobY = Math.sin(ST.time * 3) * 1.5;
+      drawPet(ctx, Object.assign({}, SPECIES[lp.id], { evoIndex: evoIndex(lp.id), shape: SPECIES[lp.id].shape }),
+        psx + 12 + (ST.dir === 'left' ? 15 : -15), psy + 24 + bobY, 22, { t: ST.time, flip: ST.dir === 'left' });
+      ctx.restore();
+    }
+    drawTrainer(ctx, psx + 12, psy + 22, 26, ST.dir, ST.time, !!ST.mv);
+
+    // HUD
+    panel(8, 8, VW - 16, 46, 0.82, 12);
+    text(ZONES[ST.zone].name, 20, 24, 14, '#ffe9a8', 'left', '700');
+    text('图鉴 ' + seenCount() + '/' + TOTAL_SPECIES, 20, 41, 10, 'rgba(255,255,255,0.65)');
+    drawBall(ctx, 186, 24, 6, 1);
+    text('×' + (ST.items.ball || 0), 196, 24, 12, '#fff', 'left', '600');
+    drawBall(ctx, 226, 24, 6, 2);
+    text('×' + (ST.items.superball || 0), 236, 24, 12, '#fff', 'left', '600');
+    ctx.fillStyle = '#ffd447';
+    ctx.beginPath(); ctx.arc(288, 24, 7, 0, Math.PI * 2); ctx.fill();
+    text('' + ST.gold, 300, 24, 12, '#fff', 'left', '700');
+    if (lp) text(SPECIES[lp.id].name + ' Lv' + lp.lv, 300, 41, 10, 'rgba(255,255,255,0.8)', 'left', '600');
+
+    // 目标条
+    panel(8, 60, VW - 16, 26, 0.7, 8);
+    var q = ST.quest.length > 26 ? ST.quest.slice(0, 26) + '…' : ST.quest;
+    text('目标：' + q, 18, 73, 10.5, '#ffe9a8', 'left', '600');
+
+    drawDpad();
+    drawMenuButton();
+
+    if (ST.toastT > 0) {
+      ctx.globalAlpha = Math.min(1, ST.toastT);
+      var tl = wrapText(ST.toast, 280, 11);
+      var tw = 0;
+      tl.forEach(function (s) { tw = Math.max(tw, ctx.measureText(s).width); });
+      tw = Math.min(VW - 16, tw + 34);
+      var th = 12 + tl.length * 17;
+      panel(VW / 2 - tw / 2, 486 - th, tw, th, 0.85, 10);
+      tl.forEach(function (s, i) { text(s, VW / 2, 486 - th + 16 + i * 17, 11, '#fff', 'center', '600'); });
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function seenCount() { return Object.keys(ST.flags).filter(function (k) { return k.indexOf('seen_') === 0; }).length; }
+
+  function drawDpad() {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(DPAD.cx, DPAD.cy, DPAD.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20,16,32,0.55)'; ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    var dirs = [[0, -1, 'up'], [0, 1, 'down'], [-1, 0, 'left'], [1, 0, 'right']];
+    dirs.forEach(function (d) {
+      var ddx = d[0] * 30, ddy = d[1] * 30;
+      ctx.beginPath();
+      ctx.moveTo(DPAD.cx + ddx - (d[0] ? 0 : 9), DPAD.cy + ddy - (d[1] ? 0 : 9));
+      ctx.lineTo(DPAD.cx + ddx + d[0] * 12, DPAD.cy + ddy + d[1] * 12);
+      ctx.lineTo(DPAD.cx + ddx + (d[0] ? 0 : 9), DPAD.cy + ddy + (d[1] ? 0 : 9));
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.beginPath(); ctx.arc(DPAD.cx, DPAD.cy, 12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,210,90,0.55)'; ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMenuButton() {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(MENUBTN.cx, MENUBTN.cy, MENUBTN.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,196,66,0.85)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+    text('菜单', MENUBTN.cx, MENUBTN.cy + 1, 14, '#3a2410', 'center', '700');
+  }
+
+  /* ============================ 战斗绘制 ============================ */
+
+  function hpBar(x, y, w, h, ratio, color) {
+    rr2(x, y, w, h, h / 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+    rr2(x + 1, y + 1, Math.max(0, (w - 2) * ratio), h - 2, (h - 2) / 2);
+    ctx.fillStyle = color; ctx.fill();
+  }
+
+  function drawBattle() {
+    var b = ST.battle; if (!b) return;
+    var theme = ZONES[ST.zone] ? ZONES[ST.zone].theme : 'grass';
+    var bg = ctx.createLinearGradient(0, 0, 0, VH);
+    if (theme === 'volcano') { bg.addColorStop(0, '#3a1512'); bg.addColorStop(0.55, '#7a3324'); bg.addColorStop(1, '#2a1210'); }
+    else if (theme === 'cave') { bg.addColorStop(0, '#1b1723'); bg.addColorStop(0.55, '#3a3547'); bg.addColorStop(1, '#141119'); }
+    else if (theme === 'sky') { bg.addColorStop(0, '#2d7ec4'); bg.addColorStop(0.5, '#8fd3f5'); bg.addColorStop(1, '#dff3ff'); }
+    else if (theme === 'forest') { bg.addColorStop(0, '#1f3f2a'); bg.addColorStop(0.55, '#3f7d47'); bg.addColorStop(1, '#1a2b20'); }
+    else if (theme === 'town') { bg.addColorStop(0, '#74b7e8'); bg.addColorStop(0.5, '#a9ddff'); bg.addColorStop(1, '#7cbf72'); }
+    else { bg.addColorStop(0, '#6fc0f0'); bg.addColorStop(0.5, '#b3e5ff'); bg.addColorStop(1, '#79c05c'); }
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, VW, VH);
+
+    ctx.beginPath(); ctx.ellipse(248, 322, 84, 24, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(96, 438, 88, 24, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill();
+
+    var sh = b.shake > 0 ? Math.sin(ST.time * 60) * 5 * b.shake : 0;
+    ctx.save();
+    ctx.translate(sh, 0);
+    var esp = Object.assign({}, SPECIES[b.enemy.id], { evoIndex: evoIndex(b.enemy.id), shape: SPECIES[b.enemy.id].shape });
+    drawPet(ctx, esp, 246, 322, b.isBoss ? 124 : 96, { t: ST.time + 1, flip: true });
+    ctx.restore();
+
+    var p = lead();
+    if (p) {
+      var psp = Object.assign({}, SPECIES[p.id], { evoIndex: evoIndex(p.id), shape: SPECIES[p.id].shape });
+      ctx.save();
+      ctx.globalAlpha = b.flash > 0 ? (Math.sin(ST.time * 40) > 0 ? 0.75 : 1) : 1;
+      drawPet(ctx, psp, 96, 436, 96, { t: ST.time });
+      ctx.restore();
+    }
+
+    panel(12, 56, 196, 52, 0.88, 10);
+    text(SPECIES[b.enemy.id].name + '  Lv' + b.enemy.lv, 24, 74, 13, '#fff', 'left', '700');
+    text(TYPE_NAME[SPECIES[b.enemy.id].type], 196, 74, 10, '#ffe9a8', 'right', '600');
+    var er = b.enemy.hp / b.enemy.maxhp;
+    hpBar(24, 86, 170, 10, er, er > 0.5 ? '#5cd97a' : er > 0.2 ? '#ffd447' : '#ff5f5f');
+    text(Math.max(0, Math.round(b.enemy.hp)) + '/' + b.enemy.maxhp, 194, 100, 9, 'rgba(255,255,255,0.65)', 'right');
+
+    if (p) {
+      panel(152, 366, 196, 54, 0.9, 10);
+      text(SPECIES[p.id].name + '  Lv' + p.lv, 164, 384, 13, '#fff', 'left', '700');
+      text(TYPE_NAME[SPECIES[p.id].type], 336, 384, 10, '#ffe9a8', 'right', '600');
+      var pr = p.hp / p.maxhp;
+      hpBar(164, 396, 170, 10, pr, pr > 0.5 ? '#5cd97a' : pr > 0.2 ? '#ffd447' : '#ff5f5f');
+      text(Math.max(0, Math.round(p.hp)) + '/' + p.maxhp, 334, 411, 9, 'rgba(255,255,255,0.65)', 'right');
+      text('经验 ' + p.exp + '/' + needExp(p.lv), 164, 411, 9, 'rgba(255,255,255,0.5)', 'left');
+    }
+
+    if (b.phase === 'menu' || b.phase === 'log') {
+      panel(12, 452, VW - 24, 62, 0.92, 10);
+      var lines = b.log.slice(-3);
+      lines.forEach(function (l, i) {
+        text(l, 22, 466 + i * 17, 11, i === lines.length - 1 ? '#ffe9a8' : 'rgba(255,255,255,0.75)', 'left', '500');
+      });
+    }
+
+    if (b.over) {
+      button('继续 ▶', 100, 540, 160, 52, endBattleTurnIfOver, 'main');
+      return;
+    }
+    if (b.phase === 'skill' || b.phase === 'ball' || b.phase === 'swap') {
+      ctx.fillStyle = 'rgba(4,10,9,0.62)'; ctx.fillRect(0, 0, VW, VH);
+    }
+    if (b.phase === 'menu') {
+      button('技能', 16, 524, 156, 48, function () { ST.battle.phase = 'skill'; }, 'main');
+      button('捕捉', 188, 524, 156, 48, function () { ST.battle.phase = 'ball'; });
+      button('换宠', 16, 578, 156, 48, function () { ST.battle.phase = 'swap'; });
+      button('逃跑', 188, 578, 156, 48, playerRun);
+    } else if (b.phase === 'skill') {
+      var sp = SPECIES[lead().id];
+      var mvs = MOVES[sp.type];
+      var unlocked = 1 + (lead().lv >= 8 ? 1 : 0) + (lead().lv >= 16 ? 1 : 0);
+      for (var i = 0; i < 3; i++) {
+        (function (idx) {
+          var enabled = idx < unlocked;
+          var label = enabled ? mvs[idx].n + ' · 威力 ' + mvs[idx].p : '？？？（Lv' + (idx === 1 ? 8 : 16) + ' 解锁）';
+          button(label, 16, 420 + idx * 50, VW - 32, 44,
+            enabled ? function () { playerSkill(idx); } : function () { toast('等级不足'); },
+            enabled ? 'main' : '');
+        })(i);
+      }
+      button('返回', 100, 576, 160, 36, function () { ST.battle.phase = 'menu'; });
+    } else if (b.phase === 'ball') {
+      panel(12, 410, VW - 24, 168, 0.92, 12);
+      text('选择精灵球', 22, 428, 12, '#ffe9a8', 'left', '700');
+      button('精灵球 ×' + (ST.items.ball || 0), 20, 440, 156, 44, function () { tryThrow(1); }, 'main');
+      button('高级球 ×' + (ST.items.superball || 0), 184, 440, 156, 44, function () { tryThrow(2); }, 'main');
+      text('当前捕捉率：精灵球 ' + Math.round(captureChance(b, 1) * 100) + '%  ／ 高级球 ' + Math.round(captureChance(b, 2) * 100) + '%',
+        VW / 2, 496, 10.5, 'rgba(255,255,255,0.75)', 'center');
+      button('返回', 100, 512, 160, 40, function () { ST.battle.phase = 'menu'; });
+      text('血量越低越容易捕捉', VW / 2, 562, 10, 'rgba(255,255,255,0.55)', 'center');
+    } else if (b.phase === 'swap') {
+      panel(12, 396, VW - 24, 168, 0.92, 12);
+      text('选择上场宠物', 22, 414, 12, '#ffe9a8', 'left', '700');
+      var shown = 0;
+      ST.party.forEach(function (q, qi) {
+        if (shown >= 3) return;
+        var yy = 424 + shown * 40;
+        var dis = q.hp <= 0 || qi === 0;
+        button(SPECIES[q.id].name + ' Lv' + q.lv + '  ' + Math.round(q.hp) + '/' + q.maxhp, 20, yy, 220, 34,
+          function () {
+            if (dis) { toast('无法上场'); return; }
+            var cur = ST.party[0]; ST.party[0] = q; ST.party[qi] = cur;
+            blog('换上 ' + SPECIES[q.id].name + '！');
+            ST.battle.phase = 'log';
+            ST.battle.busy = true;
+            setTimeout(function () {
+              if (!ST.battle) return;
+              ST.battle.busy = false; enemyTurn();
+              if (ST.battle && !ST.battle.over) ST.battle.phase = 'menu';
+            }, 500);
+          }, dis ? '' : 'main');
+        shown++;
+      });
+      button('返回', 100, 536, 160, 30, function () { ST.battle.phase = 'menu'; });
+    }
+  }
+
+  /* ============================ 各界面 ============================ */
+
+  function drawTitle() {
+    var g = ctx.createLinearGradient(0, 0, 0, VH);
+    g.addColorStop(0, '#173b63'); g.addColorStop(0.5, '#2b6fa8'); g.addColorStop(1, '#7fd0a5');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+
+    for (var i = 0; i < 40; i++) {
+      var sx = (i * 37) % VW, sy = (i * 53) % 300;
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.2 + (i % 5) * 0.12) + ')';
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+    var cols = ['#ff6b6b', '#ffa94d', '#ffe066', '#8ce99a', '#66d9e8', '#9775fa'];
+    cols.forEach(function (c, idx) {
+      ctx.beginPath();
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = c;
+      ctx.globalAlpha = 0.75;
+      ctx.arc(VW / 2, 430, 150 - idx * 12, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    text('彩虹宠物物语', VW / 2, 92, 33, '#fff6cf', 'center', '800');
+    text('RAINBOW PET SAGA', VW / 2, 122, 12, 'rgba(255,255,255,0.72)', 'center', '600');
+    text('五系相克 · 捕捉养成 · 虹光王国', VW / 2, 148, 12, 'rgba(255,255,255,0.85)', 'center', '500');
+
+    var t = ST.time;
+    drawPet(ctx, Object.assign({}, SPECIES.chirp, { shape: 'chick', evoIndex: 2 }), 92, 340, 72, { t: t });
+    drawPet(ctx, Object.assign({}, SPECIES.sprout, { shape: 'bud', evoIndex: 0 }), 180, 362, 88, { t: t + 1 });
+    drawPet(ctx, Object.assign({}, SPECIES.droplet, { shape: 'fish', evoIndex: 1 }), 268, 345, 76, { t: t + 2, flip: true });
+
+    if (hasSave()) {
+      button('继续冒险', 70, 466, 220, 54, function () { if (loadGame()) toast('欢迎回来'); }, 'main');
+      button('开始新旅程', 70, 532, 220, 46, function () { newGame(); });
+    } else {
+      button('开始新旅程', 70, 486, 220, 54, function () { newGame(); }, 'main');
+    }
+    text('点击按钮开始 · 电脑上可按 Enter', VW / 2, 600, 11, 'rgba(255,255,255,0.6)', 'center');
+  }
+
+  function startNewOrContinue() { if (hasSave()) loadGame(); else newGame(); }
+
+  function drawStarter() {
+    ctx.fillStyle = '#1a2740'; ctx.fillRect(0, 0, VW, VH);
+    panel(14, 58, VW - 28, 116, 0.9, 14);
+    text('选择你的初始伙伴', VW / 2, 88, 18, '#ffe9a8', 'center', '700');
+    text('五系相克：草→水→铁→兽→风→草', VW / 2, 114, 11, 'rgba(255,255,255,0.75)', 'center');
+    text('选一只，之后可在野外捕捉其余伙伴', VW / 2, 138, 11, 'rgba(255,255,255,0.55)', 'center');
+
+    var opts = [
+      { id: 'sprout', desc: '植物系 · 克水，攻守均衡' },
+      { id: 'droplet', desc: '海洋系 · 克铁，耐打续航' },
+      { id: 'gearling', desc: '金属系 · 克兽，防御扎实' },
+      { id: 'fuzzpaw', desc: '猛兽系 · 克风，速度最快' },
+      { id: 'chirp', desc: '飞羽系 · 克草，出手最灵' }
+    ];
+    opts.forEach(function (o, i) {
+      var y = 188 + i * 84;
+      panel(16, y, VW - 32, 76, 0.9, 12);
+      drawPet(ctx, Object.assign({}, SPECIES[o.id], { evoIndex: 0, shape: SPECIES[o.id].shape }), 66, y + 66, 54, { t: ST.time + i });
+      text(SPECIES[o.id].name, 108, y + 24, 16, '#fff', 'left', '700');
+      text(TYPE_NAME[SPECIES[o.id].type] + '系 · Lv5', 108, y + 44, 10.5, '#ffe9a8', 'left', '600');
+      text(o.desc, 108, y + 62, 10, 'rgba(255,255,255,0.7)', 'left');
+      (function (id) { addHit(16, y, VW - 32, 78, function () { pickStarter(id); }); })(o.id);
+    });
+    text('点击卡片选择', VW / 2, 624, 11, 'rgba(255,255,255,0.5)', 'center');
+  }
+
+  function pickStarter(id) {
+    ST.party = [newPet(id, 5)];
+    ST.gold = 120;
+    ST.items = { ball: 8, superball: 0, potion: 2, elixir: 0, egg: 1 };
+    ST.flags = { ['seen_' + id]: 1 };
+    ST.zone = 'town';
+    var z = getZone('town');
+    ST.px = z.cx; ST.py = 17; ST.dir = 'up'; ST.mv = null; ST.steps = 0; ST.eggSteps = 0;
+    ST.quest = '向镇长禾打听宠物失踪的事';
+    saveGame(true);
+    makePetArt(id);
+    say([
+      '镇长禾：岚，你终于来了。最近镇上接连有宠物莫名其妙地消失。',
+      '镇长禾：有位叫铃的调查员正在镇上，她说这些失踪和「灰烬之环」有关。',
+      '（提示：左下方向盘移动，右下「菜单」打开队伍与背包。）'
+    ]);
+  }
+  function makePetArt() { /* 预留占位，避免旧存档字段缺失 */ }
+
+  function newGame() {
+    ST.ended = false;
+    ST.mode = 'starter';
+    ST.party = []; ST.box = []; ST.gold = 0;
+    ST.flags = {};
+  }
+
+  function drawDialog() {
+    panel(10, VH - 196, VW - 20, 156, 0.975, 14);
+    var d = ST.dialog;
+    if (d) {
+      var line = d.lines[d.i] || '';
+      var wrapped = wrapText(line, VW - 56, 13.5);
+      wrapped.slice(0, 5).forEach(function (l, i) {
+        text(l, 28, VH - 166 + i * 21, 13.5, '#fff', 'left', '500');
+      });
+      text('▼', VW - 34, VH - 56, 14, '#ffe9a8', 'right', '600');
+      text('点击继续', VW - 58, VH - 56, 10, 'rgba(255,255,255,0.5)', 'right');
+    }
+  }
+
+  function drawMenu() {
+    ctx.fillStyle = 'rgba(10,8,18,0.5)'; ctx.fillRect(0, 0, VW, VH);
+    panel(20, 84, VW - 40, 356, 0.94, 16);
+    text('菜单', 40, 114, 20, '#ffe9a8', 'left', '800');
+    button('队伍 / 宠物', 40, 140, VW - 80, 46, function () { ST.mode = 'party'; }, 'main');
+    button('背包 / 道具', 40, 194, VW - 80, 46, function () { openBag(); });
+    button('任务', 40, 248, VW - 80, 46, function () { ST.mode = 'quest'; });
+    button('保存进度', 40, 302, VW - 80, 46, function () { saveGame(); });
+    button('返回游戏', 40, 356, VW - 80, 46, function () { ST.mode = 'field'; });
+    text('图鉴 ' + seenCount() + ' / ' + TOTAL_SPECIES + '    金币 ' + ST.gold, VW / 2, 420, 11, 'rgba(255,255,255,0.65)', 'center');
+  }
+
+  function drawQuest() {
+    ctx.fillStyle = 'rgba(10,8,18,0.55)'; ctx.fillRect(0, 0, VW, VH);
+    panel(14, 70, VW - 28, 380, 0.95, 16);
+    text('当前目标', 28, 100, 17, '#ffe9a8', 'left', '800');
+    var q = wrapText(ST.quest, VW - 60, 14);
+    q.forEach(function (l, i) { text(l, 28, 128 + i * 24, 14, '#fff', 'left', '600'); });
+    text('已解决的事件', 28, 196, 13, 'rgba(255,255,255,0.7)', 'left', '700');
+    var lines = [];
+    if (ST.flags.foe_cave) lines.push('· 岩铁洞窟：干部「锈」已被击败');
+    if (ST.flags.foe_volcano) lines.push('· 熔岩火山：干部「烬」的抽取装置已停');
+    if (ST.flags.foe_highland) lines.push('· 风羽高地：干部「影」已退去');
+    if (ST.flags.bossDown) lines.push('· 天空之塔：蚀王被击败，虹光重回王国');
+    if (!lines.length) lines.push('· 还没有解决任何事件');
+    lines.forEach(function (l, i) { text(l, 28, 224 + i * 24, 11.5, 'rgba(255,255,255,0.8)', 'left'); });
+    text('收集进度', 28, 336, 13, 'rgba(255,255,255,0.7)', 'left', '700');
+    text('图鉴 ' + seenCount() + ' / ' + TOTAL_SPECIES + '    牧场 ' + ST.box.length + ' 只', 28, 360, 11.5, 'rgba(255,255,255,0.8)', 'left');
+    text('宠物蛋：' + (ST.items.egg || 0) + ' 枚（行走 220 步孵化，当前 ' + ST.eggSteps + ' 步）', 28, 386, 11.5, '#ffe9a8', 'left');
+    button('返回', 90, 410, 180, 32, function () { ST.mode = 'menu'; });
+  }
+
+  function drawParty() {
+    ctx.fillStyle = 'rgba(10,8,18,0.55)'; ctx.fillRect(0, 0, VW, VH);
+    panel(12, 46, VW - 24, 512, 0.95, 16);
+    text('我的伙伴（点击切换首发）', 26, 72, 14, '#ffe9a8', 'left', '700');
+    ST.party.forEach(function (p, i) {
+      var y = 86 + i * 68;
+      panel(24, y, VW - 48, 60, 0.5, 10);
+      drawPet(ctx, Object.assign({}, SPECIES[p.id], { evoIndex: evoIndex(p.id), shape: SPECIES[p.id].shape }), 56, y + 54, 40, { t: ST.time + i, flip: true });
+      text(SPECIES[p.id].name + '  Lv' + p.lv, 88, y + 20, 12.5, '#fff', 'left', '700');
+      text(TYPE_NAME[SPECIES[p.id].type] + '系', 88, y + 38, 10, '#ffe9a8', 'left', '600');
+      var r = p.hp / p.maxhp;
+      hpBar(88, y + 47, 140, 6, r, r > 0.5 ? '#5cd97a' : r > 0.2 ? '#ffd447' : '#ff5f5f');
+      text(Math.round(p.hp) + '/' + p.maxhp, 234, y + 48, 9, 'rgba(255,255,255,0.7)', 'left');
+      text('图鉴' + (evoIndex(p.id) + 1), VW - 36, y + 38, 9, 'rgba(255,255,255,0.5)', 'right');
+      if (i === 0) text('首发', VW - 36, y + 18, 10.5, '#ffd447', 'right', '700');
+      (function (idx) {
+        addHit(24, y, VW - 48, 60, function () {
+          if (idx === 0) return;
+          var cur = ST.party[0]; ST.party[0] = ST.party[idx]; ST.party[idx] = cur;
+          toast('首发换成了 ' + SPECIES[cur.id].name);
+        });
+      })(i);
+    });
+    if (ST.party.length === 0) text('还没有伙伴', VW / 2, 280, 14, '#fff', 'center');
+    text('牧场中的宠物：' + ST.box.length + ' 只', 26, 494, 11, 'rgba(255,255,255,0.6)');
+    button('返回', 80, 512, 200, 40, function () { ST.mode = 'menu'; }, 'main');
+  }
+
+  function drawBag() {
+    ctx.fillStyle = 'rgba(10,8,18,0.55)'; ctx.fillRect(0, 0, VW, VH);
+    panel(14, 56, VW - 28, 474, 0.95, 16);
+    text('背包', 28, 84, 17, '#ffe9a8', 'left', '800');
+    var rows = [
+      { key: 'ball', n: '精灵球', desc: '战斗中捕捉宠物' },
+      { key: 'superball', n: '高级球', desc: '捕捉率约 1.85 倍' },
+      { key: 'potion', n: '药水', desc: '回复首发宠物 40 生命' },
+      { key: 'elixir', n: '万能药', desc: '全队完全恢复' },
+      { key: 'egg', n: '宠物蛋', desc: '行走 220 步后孵化' }
+    ];
+    rows.forEach(function (r, i) {
+      var y = 100 + i * 72;
+      panel(26, y, VW - 52, 64, 0.45, 10);
+      text(r.n, 40, y + 22, 13.5, '#fff', 'left', '700');
+      text(r.desc, 40, y + 43, 10, 'rgba(255,255,255,0.65)', 'left');
+      text('×' + (ST.items[r.key] || 0), VW - 40, y + 22, 13.5, '#ffe9a8', 'right', '700');
+      (function (key) { button('使用', VW - 122, y + 34, 70, 24, function () { useItem(key); }); })(r.key);
+    });
+    text('金币：' + ST.gold, 28, 470, 12, '#ffd447', 'left', '700');
+    button('返回', 90, 486, 180, 38, function () { ST.mode = 'menu'; }, 'main');
+    if (ST.menuMsg) text(ST.menuMsg, VW / 2, 538, 11, '#7fe7a0', 'center');
+  }
+
+  function useItem(key) {
+    if (!ST.items[key] || ST.items[key] <= 0) { toast('数量不足'); return; }
+    var p = lead();
+    if (!p) return;
+    if (key === 'potion') {
+      if (p.hp >= p.maxhp) { toast('生命已满'); return; }
+      ST.items.potion--; p.hp = Math.min(p.maxhp, p.hp + 40); toast('回复了生命');
+    } else if (key === 'elixir') {
+      ST.items.elixir--; ST.party.forEach(fullHeal); toast('全队恢复了');
+    } else if (key === 'egg') {
+      toast('宠物蛋会在行走中孵化');
+    } else {
+      toast('精灵球只能在战斗中使用');
+    }
+  }
+
+  function drawShop() {
+    ctx.fillStyle = 'rgba(10,8,18,0.55)'; ctx.fillRect(0, 0, VW, VH);
+    panel(14, 56, VW - 28, 486, 0.95, 16);
+    text('虹光商店', 28, 86, 17, '#ffe9a8', 'left', '800');
+    text('金币 ' + ST.gold, VW - 28, 86, 12.5, '#ffd447', 'right', '700');
+    var goods = [
+      { key: 'ball', n: '精灵球', price: 30, desc: '捕捉宠物必备' },
+      { key: 'superball', n: '高级球', price: 90, desc: '高级捕捉球' },
+      { key: 'potion', n: '药水', price: 25, desc: '回复 40 生命' },
+      { key: 'elixir', n: '万能药', price: 70, desc: '全队恢复' },
+      { key: 'egg', n: '宠物蛋', price: 150, desc: '随机孵化一只幼宠' }
+    ];
+    goods.forEach(function (g, i) {
+      var y = 108 + i * 74;
+      panel(26, y, VW - 52, 66, 0.45, 10);
+      text(g.n, 40, y + 22, 13.5, '#fff', 'left', '700');
+      text(g.desc, 40, y + 44, 10, 'rgba(255,255,255,0.6)', 'left');
+      text('×' + (ST.items[g.key] || 0), VW - 40, y + 22, 11.5, 'rgba(255,255,255,0.7)', 'right');
+      (function (item) { button(g.price + ' 金', VW - 118, y + 30, 84, 28, function () { buy(item); }, 'main'); })(g);
+    });
+    if (ST.shopMsg) text(ST.shopMsg, VW / 2, 472, 11.5, '#7fe7a0', 'center');
+    button('离开', 90, 492, 180, 40, function () { ST.mode = 'field'; });
+  }
+
+  function buy(g) {
+    if (ST.gold < g.price) { toast('金币不够'); return; }
+    ST.gold -= g.price;
+    ST.items[g.key] = (ST.items[g.key] || 0) + 1;
+    ST.shopMsg = '购买了 ' + g.n;
+  }
+
+  function drawEnding() {
+    var g = ctx.createLinearGradient(0, 0, 0, VH);
+    g.addColorStop(0, '#1c2d55'); g.addColorStop(0.5, '#4f7fb8'); g.addColorStop(1, '#a8e6a3');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+    text('虹光重回王国', VW / 2, 116, 32, '#fff6cf', 'center', '800');
+    text('蚀王被击败，五色的光回到天空', VW / 2, 156, 13.5, 'rgba(255,255,255,0.85)', 'center', '600');
+    var cols = ['#ff6b6b', '#ffa94d', '#ffe066', '#8ce99a', '#66d9e8', '#9775fa'];
+    cols.forEach(function (c, idx) {
+      ctx.beginPath(); ctx.lineWidth = 10; ctx.strokeStyle = c; ctx.globalAlpha = 0.8;
+      ctx.arc(VW / 2, 470, 160 - idx * 12, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    drawPet(ctx, Object.assign({}, SPECIES.lionking, { shape: 'lion', evoIndex: 2 }), 120, 420, 92, { t: ST.time });
+    drawPet(ctx, Object.assign({}, SPECIES.skyhawk, { shape: 'chick', evoIndex: 2 }), 240, 420, 92, { t: ST.time + 1, flip: true });
+    panel(30, 486, VW - 60, 82, 0.85, 14);
+    text('队伍 ' + ST.party.length + ' 只 · 牧场 ' + ST.box.length + ' 只 · 金币 ' + ST.gold, VW / 2, 508, 12, '#fff', 'center', '600');
+    text('图鉴收集：' + seenCount() + ' / ' + TOTAL_SPECIES, VW / 2, 532, 12, '#ffe9a8', 'center', '600');
+    button('回到世界继续收集', 56, 578, 248, 44, function () { ST.mode = 'field'; }, 'main');
+  }
+
+  /* ============================ 主循环 ============================ */
+
+  var last = 0;
+  function frame(ts) {
+    var dt = last ? Math.min(0.05, (ts - last) / 1000) : 0.016;
+    last = ts;
+    ST.time += dt;
+    if (ST.toastT > 0) ST.toastT -= dt;
+    hits.length = 0;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0b0912';
+    ctx.fillRect(0, 0, cvs.width / dpr, cvs.height / dpr);
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
+    ctx.beginPath();
+    ctx.rect(0, 0, VW, VH);
+    ctx.clip();
+
+    if (ST.mode === 'field') updateField(dt);
+    if (ST.battle && ST.battle.shake > 0) ST.battle.shake = Math.max(0, ST.battle.shake - dt);
+    if (ST.battle && ST.battle.flash > 0) ST.battle.flash = Math.max(0, ST.battle.flash - dt);
+
+    if (ST.mode === 'title') drawTitle();
+    else if (ST.mode === 'starter') drawStarter();
+    else if (ST.mode === 'field') drawField();
+    else if (ST.mode === 'dialog') { drawField(); drawDialog(); }
+    else if (ST.mode === 'menu') { drawField(); drawMenu(); }
+    else if (ST.mode === 'party') { drawField(); drawParty(); }
+    else if (ST.mode === 'bag') { drawField(); drawBag(); }
+    else if (ST.mode === 'shop') { drawField(); drawShop(); }
+    else if (ST.mode === 'quest') { drawField(); drawQuest(); }
+    else if (ST.mode === 'battle') drawBattle();
+    else if (ST.mode === 'ending') drawEnding();
+
+    ctx.restore();
+
+    requestAnimationFrame(frame);
+  }
+
+  function updateField(dt) {
+    if (ST.mode !== 'field') return;
+    var dir = pointer.dir || keyDir;
+    if (ST.mv) {
+      ST.mv.t += dt;
+      var k = Math.min(1, ST.mv.t / ST.mv.dur);
+      ST.px = ST.mv.fx + (ST.mv.tx - ST.mv.fx) * k;
+      ST.py = ST.mv.fy + (ST.mv.ty - ST.mv.fy) * k;
+      if (k >= 1) {
+        ST.px = ST.mv.tx; ST.py = ST.mv.ty; ST.mv = null;
+        afterStep();
+      }
+    } else if (dir) {
+      startStep(dir);
+    }
+  }
+
+  resize();
+  getZone('town');
+  window.__started = true;
+  requestAnimationFrame(frame);
+  window.__RAINBOW__ = { ST: ST, getZone: getZone, saveGame: saveGame, ZONES: ZONES, SPECIES: SPECIES, startBattle: startBattle, zoneWild: zoneWild, say: say, advanceDialog: advanceDialog, STORY: STORY, newPet: newPet };
+})();
+
+
+
+
+
+
+
+
+
