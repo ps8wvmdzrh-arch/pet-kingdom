@@ -1,0 +1,23 @@
+# -*- coding: utf-8 -*-
+import zipfile, plistlib, io, os, shutil
+BASE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(BASE, '..')
+ipa = os.path.join(ROOT, 'ipa_v3', 'PetKingdom-unsigned.ipa')
+z = zipfile.ZipFile(ipa)
+names = z.namelist()
+print('entries', len(names))
+info = z.read('Payload/PetKingdom.app/Info.plist')
+pl = plistlib.loads(info)
+print('CFBundleDisplayName', pl.get('CFBundleDisplayName'))
+print('bundleId', pl.get('CFBundleIdentifier'))
+print('orientations', pl.get('UISupportedInterfaceOrientations'))
+web = z.getinfo('Payload/PetKingdom.app/Web/index.html')
+print('web/index.html bytes', web.file_size)
+has_v3 = b'drawDex' in z.read('Payload/PetKingdom.app/Web/index.html')
+print('v3 ui inlined', has_v3)
+exe = z.getinfo('Payload/PetKingdom.app/PetKingdom')
+print('binary bytes', exe.file_size)
+data = z.read('Payload/PetKingdom.app/PetKingdom')[:8]
+print('magic', data.hex())
+shutil.copyfile(ipa, os.path.join(ROOT, 'PetKingdom-unsigned.ipa'))
+print('copied to root, bytes', os.path.getsize(os.path.join(ROOT, 'PetKingdom-unsigned.ipa')))
