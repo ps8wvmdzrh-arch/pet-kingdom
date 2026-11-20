@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>shot</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0912; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script src="../art.js"></script>
+<script src="../game.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var m = q.get('m') || 'menu';
+  var R = window.__RAINBOW__;
+  if (!R) return;
+  var ST = R.ST;
+  ST.party = [
+    R.newPet('sprout', 12, { tal: 2 }),
+    R.newPet('bloomspirit', 22, { tal: 3 }),
+    R.newPet('tidewhale', 30, { tal: 3 }),
+    R.newPet('gearling', 18, { tal: 1 }),
+    R.newPet('emberwolf', 26, { tal: 2 })
+  ];
+  ST.box = [R.newPet('vinetail', 12), R.newPet('starcore', 30), R.newPet('nightfox', 24)];
+  ST.gold = 3600;
+  Object.keys(ST.items).forEach(function (k) { ST.items[k] = 6; });
+  ST.dex = {};
+  R.DEX_ORDER.forEach(function (id, i) { ST.dex[id] = (i % 3 === 0) ? 1 : 2; });
+  ST.dex['nightfox'] = 2;
+  ST.bondFix = 0;
+  ST.party.forEach(function (p) { p.bond = 62; });
+  ST.dexPage = 0;
+  ST.mode = (m === 'field') ? 'field' : m;
+  if (m === 'entry') { ST.entryId = q.get('id') || 'bloomspirit'; ST.entryPet = null; }
+  if (m === 'battle') {
+    R.startBattle(R.newPet('starcore', 26), true, null);
+    ST.battle.phase = q.get('phase') || 'menu';
+    ST.battle.enemy.hp = Math.round(ST.battle.enemy.maxhp * 0.35);
+  }
+  if (m === 'evolve') { ST.party[1].bond = 100; ST.party[3].bond = 100; }
+  if (m === 'mount') { ST.mount = { id: 'tidewhale', src: 'party', idx: 2 }; ST.mountType = 'water'; }
+  ST.toast = ''; ST.toastT = 0;
+  setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+  setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 1200);
+})();
+</script>
+</body>
+</html>
